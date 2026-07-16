@@ -1,6 +1,31 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import {
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
+  Search,
+  Star,
+  Plus,
+  X,
+  Compass,
+  Layout,
+  Settings,
+  History,
+  Download,
+  Briefcase,
+  Globe,
+  Video,
+  Sparkles,
+  Trash2,
+  ExternalLink,
+  ChevronRight,
+  Play,
+  CheckCircle2,
+  FileCode2,
+  Code2
+} from "lucide-react";
 import "./App.css";
 
 interface TabState {
@@ -293,6 +318,9 @@ function App() {
   const formattedTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const formattedDate = time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 
+  // Check if there are active downloads
+  const hasActiveDownloads = browserState.downloads.some(d => d.status === 'downloading');
+
   return (
     <div className="app-container">
       {/* Workspace Left Sidebar */}
@@ -303,24 +331,26 @@ function App() {
           title="Personal Workspace"
           onClick={() => setBrowserState(prev => ({ ...prev, active_workspace: "Default" }))}
         >
-          🏠
+          <Layout className="lucide-icon" />
         </button>
         <button 
           className={`workspace-btn ${browserState.active_workspace === "Work" ? "active" : ""}`}
           title="Work Workspace"
           onClick={() => setBrowserState(prev => ({ ...prev, active_workspace: "Work" }))}
         >
-          💼
+          <Briefcase className="lucide-icon" />
         </button>
         <button 
           className={`workspace-btn ${browserState.active_workspace === "Research" ? "active" : ""}`}
           title="Research Workspace"
           onClick={() => setBrowserState(prev => ({ ...prev, active_workspace: "Research" }))}
         >
-          🔍
+          <Compass className="lucide-icon" />
         </button>
         <div className="workspace-divider"></div>
-        <button className="workspace-btn" title="Settings">⚙️</button>
+        <button className="workspace-btn" title="Settings">
+          <Settings className="lucide-icon" />
+        </button>
       </aside>
 
       {/* Central Area */}
@@ -343,11 +373,13 @@ function App() {
                   className="tab-close-btn"
                   onClick={(e) => handleCloseTab(e, tab.id)}
                 >
-                  ×
+                  <X className="lucide-icon icon-close" style={{ width: '12px', height: '12px' }} />
                 </span>
               </div>
             ))}
-            <button className="add-tab-btn" onClick={() => handleNewTab()}>+</button>
+            <button className="add-tab-btn" onClick={() => handleNewTab()}>
+              <Plus className="lucide-icon icon-add" style={{ width: '15px', height: '15px' }} />
+            </button>
           </div>
 
           {/* Control Row */}
@@ -359,7 +391,7 @@ function App() {
                 disabled={activeTab && activeTab.url === "mag://start"}
                 title="Go Back"
               >
-                ←
+                <ArrowLeft className="lucide-icon icon-back" />
               </button>
               <button 
                 className="nav-btn" 
@@ -367,7 +399,7 @@ function App() {
                 disabled={activeTab && activeTab.url === "mag://start"}
                 title="Go Forward"
               >
-                →
+                <ArrowRight className="lucide-icon icon-forward" />
               </button>
               <button 
                 className="nav-btn" 
@@ -375,13 +407,13 @@ function App() {
                 disabled={activeTab && activeTab.url === "mag://start"}
                 title="Reload"
               >
-                ↻
+                <RotateCw className="lucide-icon icon-reload" />
               </button>
             </div>
 
             {/* Address Input */}
             <form className="address-bar-container" onSubmit={handleNavigate}>
-              <span className="address-icon">🔍</span>
+              <Search className="address-icon lucide-icon" style={{ width: '14px', height: '14px', color: 'var(--text-tertiary)' }} />
               <input 
                 type="text" 
                 className="address-input"
@@ -397,15 +429,22 @@ function App() {
                     right: '12px',
                     background: 'transparent',
                     border: 'none',
-                    fontSize: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
                     cursor: 'pointer',
-                    color: isBookmarked ? '#f59e0b' : '#6b7280',
-                    textShadow: isBookmarked ? '0 0 8px rgba(245, 158, 11, 0.4)' : 'none'
                   }}
                   onClick={handleToggleBookmark}
                   title={isBookmarked ? "Remove Bookmark" : "Add Bookmark"}
                 >
-                  ★
+                  <Star 
+                    className={`lucide-icon ${isBookmarked ? "star-bookmarked" : ""}`} 
+                    style={{ 
+                      width: '16px', 
+                      height: '16px', 
+                      fill: isBookmarked ? '#f59e0b' : 'none', 
+                      color: isBookmarked ? '#f59e0b' : '#6b7280' 
+                    }} 
+                  />
                 </button>
               )}
             </form>
@@ -416,7 +455,8 @@ function App() {
                 className={`action-btn ${showAiSidebar ? "active" : ""}`}
                 onClick={() => setShowAiSidebar(!showAiSidebar)}
               >
-                <span>✨</span> AI Assistant
+                <Sparkles className="lucide-icon" style={{ width: '14px', height: '14px', marginRight: '5px' }} />
+                AI Assistant
               </button>
             </div>
           </div>
@@ -435,7 +475,7 @@ function App() {
                 <h2 className="start-page-greeting">Good morning, Explorer</h2>
                 
                 <div className="start-page-search-container" style={{ width: '100%' }}>
-                  <span className="start-page-search-icon">🔍</span>
+                  <Search className="start-page-search-icon lucide-icon" style={{ width: '18px', height: '18px', color: 'var(--text-tertiary)' }} />
                   <input 
                     type="text"
                     className="start-page-search-input"
@@ -453,27 +493,28 @@ function App() {
                 {/* Quick Links Grid */}
                 <div className="quick-links-grid" style={{ width: '100%', marginBottom: '20px' }}>
                   <div className="quick-link-card" onClick={() => handleNavigate(undefined, "github.com")}>
-                    <span className="quick-link-icon">🐙</span>
+                    <Code2 className="lucide-icon" style={{ width: '22px', height: '22px', marginBottom: '8px' }} />
                     <span className="quick-link-title">GitHub</span>
                   </div>
                   <div className="quick-link-card" onClick={() => handleNavigate(undefined, "tauri.app")}>
-                    <span className="quick-link-icon">🦀</span>
+                    <Globe className="lucide-icon" style={{ width: '22px', height: '22px', marginBottom: '8px' }} />
                     <span className="quick-link-title">Tauri</span>
                   </div>
                   <div className="quick-link-card" onClick={() => handleNavigate(undefined, "react.dev")}>
-                    <span className="quick-link-icon">⚛️</span>
+                    <FileCode2 className="lucide-icon" style={{ width: '22px', height: '22px', marginBottom: '8px' }} />
                     <span className="quick-link-title">React</span>
                   </div>
                   <div className="quick-link-card" onClick={() => handleNavigate(undefined, "youtube.com")}>
-                    <span className="quick-link-icon">🎥</span>
+                    <Video className="lucide-icon" style={{ width: '22px', height: '22px', marginBottom: '8px' }} />
                     <span className="quick-link-title">YouTube</span>
                   </div>
                 </div>
 
                 {/* Bookmarks Section */}
                 <div style={{ width: '100%', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '16px' }}>
-                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', color: '#fff' }}>
-                    <span>⭐ Bookmarks</span>
+                  <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', display: 'flex', color: '#fff', alignItems: 'center', gap: '6px' }}>
+                    <Star className="lucide-icon" style={{ width: '15px', height: '15px', color: '#f59e0b', fill: '#f59e0b' }} />
+                    <span>Bookmarks</span>
                   </h4>
                   {browserState.bookmarks.length === 0 ? (
                     <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>No bookmarks saved yet.</p>
@@ -491,7 +532,10 @@ function App() {
                             fontSize: '12.5px',
                             color: 'var(--text-secondary)',
                             cursor: 'pointer',
-                            transition: 'var(--transition-fast)'
+                            transition: 'var(--transition-fast)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
                           }}
                           onMouseEnter={(e) => {
                             e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
@@ -502,6 +546,7 @@ function App() {
                             e.currentTarget.style.color = 'var(--text-secondary)';
                           }}
                         >
+                          <Globe style={{ width: '11px', height: '11px', color: 'var(--text-tertiary)' }} />
                           {bm.title}
                         </div>
                       ))}
@@ -512,20 +557,30 @@ function App() {
                 {/* Downloads Section */}
                 <div style={{ width: '100%', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '16px' }}>
                   <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', color: '#fff', alignItems: 'center' }}>
-                    <span>📥 Downloads</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Download className={`lucide-icon ${hasActiveDownloads ? "animate-download" : ""}`} style={{ width: '15px', height: '15px' }} />
+                      Downloads
+                    </span>
                     <button 
                       onClick={handleStartDownload}
                       style={{
-                        padding: '4px 10px',
+                        padding: '5px 12px',
                         background: 'var(--accent-color)',
                         border: 'none',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         fontSize: '11px',
                         color: '#fff',
                         cursor: 'pointer',
-                        fontWeight: '500'
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'var(--transition-fast)'
                       }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent-color)'}
                     >
+                      <Play style={{ width: '10px', height: '10px', fill: 'white' }} />
                       Test Download
                     </button>
                   </h4>
@@ -536,11 +591,18 @@ function App() {
                       {browserState.downloads.map((dl) => {
                         const pct = Math.round((dl.downloaded_bytes / dl.total_bytes) * 100);
                         return (
-                          <div key={dl.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '500' }}>
-                              <span style={{ color: '#fff' }}>{dl.filename}</span>
+                          <div key={dl.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(0,0,0,0.2)', padding: '10px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '500', alignItems: 'center' }}>
+                              <span style={{ color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {dl.status === 'completed' ? (
+                                  <CheckCircle2 style={{ width: '13px', height: '13px', color: '#10b981' }} />
+                                ) : (
+                                  <Download style={{ width: '13px', height: '13px', color: 'var(--accent-color)' }} />
+                                )}
+                                {dl.filename}
+                              </span>
                               <span style={{ color: dl.status === 'completed' ? '#10b981' : 'var(--text-secondary)' }}>
-                                {dl.status === 'completed' ? '✓ Finished' : `${pct}%`}
+                                {dl.status === 'completed' ? 'Finished' : `${pct}%`}
                               </span>
                             </div>
                             <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -557,7 +619,10 @@ function App() {
               {/* Right Column (History sidebar) */}
               <div style={{ background: 'rgba(0,0,0,0.15)', borderLeft: '1px solid var(--border-color)', height: '100%', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px', borderRadius: '16px' }}>
                 <h4 style={{ fontSize: '14px', fontWeight: '600', display: 'flex', justifyContent: 'space-between', color: '#fff', alignItems: 'center' }}>
-                  <span>📜 History</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <History className="lucide-icon" style={{ width: '15px', height: '15px', color: 'var(--text-secondary)' }} />
+                    History
+                  </span>
                   {browserState.history.length > 0 && (
                     <button 
                       onClick={handleClearHistory}
@@ -567,14 +632,18 @@ function App() {
                         color: '#ef4444',
                         cursor: 'pointer',
                         fontSize: '11px',
-                        fontWeight: '500'
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
                       }}
                     >
+                      <Trash2 style={{ width: '12px', height: '12px' }} />
                       Clear
                     </button>
                   )}
                 </h4>
-                <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '420px', paddingRight: '4px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', paddingRight: '4px' }}>
                   {browserState.history.length === 0 ? (
                     <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>No history logged yet.</p>
                   ) : (
@@ -587,8 +656,8 @@ function App() {
                           flexDirection: 'column',
                           gap: '2px',
                           cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '8px',
+                          padding: '8px 10px',
+                          borderRadius: '10px',
                           background: 'rgba(255,255,255,0.01)',
                           border: '1px solid transparent',
                           transition: 'var(--transition-fast)'
@@ -602,8 +671,11 @@ function App() {
                           e.currentTarget.style.borderColor = 'transparent';
                         }}
                       >
-                        <span style={{ fontSize: '12.5px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.title}</span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.url}</span>
+                        <span style={{ fontSize: '12.5px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <ExternalLink style={{ width: '10px', height: '10px', color: 'var(--text-tertiary)' }} />
+                          {h.title}
+                        </span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: '14px' }}>{h.url}</span>
                       </div>
                     ))
                   )}
@@ -620,9 +692,11 @@ function App() {
         <aside className="ai-sidebar">
           <div className="ai-sidebar-header">
             <h3 className="ai-sidebar-title">
-              <span className="ai-sidebar-icon">✨</span> Mag AI
+              <Sparkles className="ai-sidebar-icon lucide-icon" style={{ color: 'var(--accent-color)' }} /> Mag AI
             </h3>
-            <button className="ai-close-btn" onClick={() => setShowAiSidebar(false)}>×</button>
+            <button className="ai-close-btn" onClick={() => setShowAiSidebar(false)}>
+              <X className="lucide-icon" style={{ width: '16px', height: '16px' }} />
+            </button>
           </div>
           
           <div className="ai-messages-container">
@@ -651,7 +725,9 @@ function App() {
                 }
               }}
             />
-            <button className="ai-send-btn" onClick={() => handleSendAiMessage()}>→</button>
+            <button className="ai-send-btn" onClick={() => handleSendAiMessage()}>
+              <ChevronRight className="lucide-icon" style={{ width: '16px', height: '16px' }} />
+            </button>
           </div>
         </aside>
       )}
