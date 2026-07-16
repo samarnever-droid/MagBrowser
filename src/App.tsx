@@ -192,7 +192,19 @@ function App() {
       }
     }
 
-    invoke("navigate_tab", { tabId: browserState.active_tab_id, url: targetUrl })
+    const rect = webviewContainerRef.current?.getBoundingClientRect();
+    const viewportRect = rect ? {
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    } : { x: 70, y: 120, width: 800, height: 480 };
+
+    invoke("navigate_tab", { 
+      tabId: browserState.active_tab_id, 
+      url: targetUrl,
+      rect: viewportRect
+    })
       .then(() => {
         setBrowserState((prev) => ({
           ...prev,

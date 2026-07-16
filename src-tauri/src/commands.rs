@@ -46,15 +46,29 @@ pub async fn new_tab(
             .as_millis()
     );
 
-    engine_state.engine.create_tab(&tab_id, &url, rect.to_tauri_rect()).await?;
+    // Defer native webview creation for mag://start or about:blank
+    let is_web_page = url != "mag://start" && url != "about:blank";
+    if is_web_page {
+        engine_state.engine.create_tab(&tab_id, &url, rect.to_tauri_rect()).await?;
+    }
 
     let old_active_id = {
         let state = app_state.state.lock().map_err(|e| e.to_string())?;
         state.active_tab_id.clone()
     };
 
+    // Hide old active webview if it existed
     if let Some(ref active_id) = old_active_id {
-        engine_state.engine.set_tab_visibility(active_id, false).await?;
+        let old_had_webview = {
+            let state = app_state.state.lock().map_err(|e| e.to_string())?;
+            state.tabs.iter()
+                .find(|t| t.id == *active_id)
+                .map(|t| t.url != "mag://start" && t.url != "about:blank")
+                .unwrap_or(false)
+        };
+        if old_had_webview {
+            engine_state.engine.set_tab_visibility(active_id, false).await?;
+        }
     }
 
     let new_state = {
@@ -63,15 +77,14 @@ pub async fn new_tab(
             id: tab_id.clone(),
             title: if url == "mag://start" { "Dashboard".to_string() } else { "New Tab".to_string() },
             url: url.clone(),
-            is_loading: true,
+            is_loading: is_web_page,
             can_go_back: false,
             can_go_forward: false,
         };
         state.tabs.push(tab);
         state.active_tab_id = Some(tab_id);
         
-        // Also log starting dashboard/pages to history
-        if url != "mag://start" {
+        if is_web_page {
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -98,8 +111,10 @@ pub async fn close_tab(
     engine_state: State<'_, EngineState>,
     app_handle: AppHandle,
 ) -> Result<BrowserState, String> {
-    let (was_active, next_active_id) = {
+    let (had_webview, was_active, next_active_id) = {
         let state = app_state.state.lock().map_err(|e| e.to_string())?;
+        let tab = state.tabs.iter().find(|t| t.id == tab_id);
+        let had_webview = tab.map(|t| t.url != "mag://start" && t.url != "about:blank").unwrap_or(false);
         let was_active = state.active_tab_id.as_ref() == Some(&tab_id);
         let next_active_id = if was_active {
             state.tabs.iter()
@@ -109,14 +124,26 @@ pub async fn close_tab(
         } else {
             None
         };
-        (was_active, next_active_id)
+        (had_webview, was_active, next_active_id)
     };
 
-    engine_state.engine.close_tab(&tab_id).await?;
+    // Close the native webview if it existed
+    if had_webview {
+        engine_state.engine.close_tab(&tab_id).await?;
+    }
 
     if was_active {
         if let Some(ref next_id) = next_active_id {
-            engine_state.engine.set_tab_visibility(next_id, true).await?;
+            let next_has_webview = {
+                let state = app_state.state.lock().map_err(|e| e.to_string())?;
+                state.tabs.iter()
+                    .find(|t| t.id == *next_id)
+                    .map(|t| t.url != "mag://start" && t.url != "about:blank")
+                    .unwrap_or(false)
+            };
+            if next_has_webview {
+                engine_state.engine.set_tab_visibility(next_id, true).await?;
+            }
         }
     }
 
@@ -144,12 +171,25 @@ pub async fn switch_tab(
     engine_state: State<'_, EngineState>,
     app_handle: AppHandle,
 ) -> Result<BrowserState, String> {
-    let (should_switch, old_active_id) = {
+    let (should_switch, old_active_id, old_had_webview, new_has_webview) = {
         let state = app_state.state.lock().map_err(|e| e.to_string())?;
         if state.active_tab_id.as_ref() == Some(&tab_id) {
-            (false, None)
+            (false, None, false, false)
         } else {
-            (true, state.active_tab_id.clone())
+            let old_id = state.active_tab_id.clone();
+            let old_had = old_id.as_ref().map(|id| {
+                state.tabs.iter()
+                    .find(|t| t.id == *id)
+                    .map(|t| t.url != "mag://start" && t.url != "about:blank")
+                    .unwrap_or(false)
+            }).unwrap_or(false);
+            
+            let new_has = state.tabs.iter()
+                .find(|t| t.id == tab_id)
+                .map(|t| t.url != "mag://start" && t.url != "about:blank")
+                .unwrap_or(false);
+
+            (true, old_id, old_had, new_has)
         }
     };
 
@@ -158,10 +198,16 @@ pub async fn switch_tab(
         return Ok(state.clone());
     }
 
-    if let Some(ref active_id) = old_active_id {
-        engine_state.engine.set_tab_visibility(active_id, false).await?;
+    // Toggle native webview visibilities based on existence
+    if old_had_webview {
+        if let Some(ref active_id) = old_active_id {
+            engine_state.engine.set_tab_visibility(active_id, false).await?;
+        }
     }
-    engine_state.engine.set_tab_visibility(&tab_id, true).await?;
+    
+    if new_has_webview {
+        engine_state.engine.set_tab_visibility(&tab_id, true).await?;
+    }
 
     let new_state = {
         let mut state = app_state.state.lock().map_err(|e| e.to_string())?;
@@ -178,30 +224,55 @@ pub async fn switch_tab(
 pub async fn navigate_tab(
     tab_id: String,
     url: String,
+    rect: ViewportRect,
     app_state: State<'_, AppState>,
     engine_state: State<'_, EngineState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    engine_state.engine.navigate(&tab_id, &url).await?;
+    let had_webview = {
+        let state = app_state.state.lock().map_err(|e| e.to_string())?;
+        state.tabs.iter()
+            .find(|t| t.id == tab_id)
+            .map(|t| t.url != "mag://start" && t.url != "about:blank")
+            .unwrap_or(false)
+    };
+
+    let is_web_page = url != "mag://start" && url != "about:blank";
+
+    if is_web_page {
+        if had_webview {
+            engine_state.engine.navigate(&tab_id, &url).await?;
+        } else {
+            // Lazy create the webview when transitioning to a real page
+            engine_state.engine.create_tab(&tab_id, &url, rect.to_tauri_rect()).await?;
+            engine_state.engine.set_tab_visibility(&tab_id, true).await?;
+        }
+    } else if had_webview {
+        // De-instantiate webview if returning to the local start dashboard
+        engine_state.engine.close_tab(&tab_id).await?;
+    }
 
     let new_state = {
         let mut state = app_state.state.lock().map_err(|e| e.to_string())?;
         
         if let Some(tab) = state.tabs.iter_mut().find(|t| t.id == tab_id) {
             tab.url = url.clone();
-            tab.title = url.clone(); // Placeholder title
+            tab.title = if url == "mag://start" { "Dashboard".to_string() } else { url.clone() };
+            tab.is_loading = is_web_page;
         }
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        if is_web_page {
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
 
-        state.history.push(HistoryItem {
-            url: url.clone(),
-            title: url.clone(),
-            timestamp,
-        });
+            state.history.push(HistoryItem {
+                url: url.clone(),
+                title: url.clone(),
+                timestamp,
+            });
+        }
 
         state.clone()
     };
@@ -231,13 +302,22 @@ pub async fn resize_active_tab(
     app_state: State<'_, AppState>,
     engine_state: State<'_, EngineState>,
 ) -> Result<(), String> {
-    let active_id = {
+    let (active_id, has_webview) = {
         let state = app_state.state.lock().map_err(|e| e.to_string())?;
-        state.active_tab_id.clone()
+        let active_id = state.active_tab_id.clone();
+        let has_webview = active_id.as_ref().map(|id| {
+            state.tabs.iter()
+                .find(|t| t.id == *id)
+                .map(|t| t.url != "mag://start" && t.url != "about:blank")
+                .unwrap_or(false)
+        }).unwrap_or(false);
+        (active_id, has_webview)
     };
 
-    if let Some(ref active_id) = active_id {
-        engine_state.engine.resize_tab(active_id, rect.to_tauri_rect()).await?;
+    if has_webview {
+        if let Some(ref active_id) = active_id {
+            engine_state.engine.resize_tab(active_id, rect.to_tauri_rect()).await?;
+        }
     }
     Ok(())
 }
@@ -252,7 +332,6 @@ pub async fn add_bookmark(
 ) -> Result<BrowserState, String> {
     let mut state = app_state.state.lock().map_err(|e| e.to_string())?;
     
-    // Avoid duplicates
     if !state.bookmarks.iter().any(|b| b.url == url) {
         state.bookmarks.push(BookmarkItem {
             url,
@@ -309,20 +388,18 @@ pub async fn trigger_mock_download(
         id: download_id.clone(),
         url: url.clone(),
         filename: filename.clone(),
-        total_bytes: 1024 * 1024 * 50, // 50MB
+        total_bytes: 1024 * 1024 * 50,
         downloaded_bytes: 0,
         status: "downloading".to_string(),
     });
 
     app_handle.emit("state-changed", state.clone()).map_err(|e| e.to_string())?;
 
-    // Spawn a simple background simulation of download updates
     let app_handle_clone = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         for i in 1..=5 {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             
-            // Retrieve AppState dynamically from AppHandle
             let app_state = app_handle_clone.state::<AppState>();
             let mut state = app_state.state.lock().unwrap();
             if let Some(dl) = state.downloads.iter_mut().find(|d| d.id == download_id) {
