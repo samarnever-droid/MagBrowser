@@ -414,3 +414,8 @@ pub async fn trigger_mock_download(
 
     Ok(state.clone())
 }
+
+#[tauri::command]
+pub fn exit_app(app_handle: AppHandle) {
+    app_handle.exit(0);
+}

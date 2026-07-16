@@ -50,7 +50,8 @@ pub fn run() {
             commands::add_bookmark,
             commands::remove_bookmark,
             commands::clear_history,
-            commands::trigger_mock_download
+            commands::trigger_mock_download,
+            commands::exit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
